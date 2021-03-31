@@ -1,0 +1,375 @@
+---
+title: "bueno-gabrielle-ada-homework-2"
+#output: html_document
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    toc_depth: 2
+    df_print: paged
+  pdf_document:
+    toc: yes
+    toc_depth: '2'
+---
+
+Loading packages
+```{r}
+library(readr) 
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+library(radiant)
+library(mosaic)
+library(ggpubr)
+```
+
+# Challenge 1
+Load the “IMDB-movies.csv” dataset from the ada-2021-datasets repository on GitHub as a “tibble,” d.
+```{r}
+library(readr)
+f <- "https://raw.githubusercontent.com/difiore/ada-2021-datasets/master/IMDB-movies.csv"
+d <- read_csv(f, col_names = TRUE)
+```
+1. Use a one-line statement to filter the dataset to include just movies from 1920 to 1979 and movies that are between 1 and 3 hours long (runtimeMinutes >= 60 and runtimeMinutes <= 180), and add a new column that codes the startYear into a new variable, decade (“20s,” “30s,” …“70s”). If you do this correctly, there should be 5651 movies remaining in the dataset.
+```{r}
+a <- d[d$startYear >= "1920" & d$startYear <= "1979" & d$runtimeMinutes >= 60 & d$runtimeMinutes <= 180, ] %>%
+  mutate("decade" = paste(substr(startYear, 3, 3), "0s", sep = "")) %>%
+  drop_na() #There was one row with all NAs, not sure why, but this takes it out
+```
+
+2. Use {ggplot2} to plot histograms of the distribution of runtimeMinutes for each decade.
+```{r, figures-side, fig.show="hold", out.width="50%"}
+ggplot(a, aes(x = runtimeMinutes)) + geom_histogram() + facet_wrap(~decade)
+```
+
+3. Use a one-line statement to calculate the population mean and population standard deviation in runtimeMinutes for each decade and save the results in a new dataframe, `results.`
+```{r}
+results <- a %>% 
+  group_by(decade) %>%
+  summarize(
+  popMean = mean(runtimeMinutes, na.rm = TRUE),
+  popSD = sdpop(runtimeMinutes, na.rm = TRUE),
+  popSE = popSD/sqrt(100) 
+  )
+results
+```
+
+4. Draw a single sample of 100 movies, without replacement, from each decade, calculate this single sample mean and sample standard deviation in runtimeMinutes, and estimate the SE around the population mean runtimeMinutes for each decade based on the standard deviation and sample size from these samples.
+```{r}
+set.seed(1)
+sampByDecade <- 
+group_by(a, decade) %>%
+  sample_n(100, replace = FALSE) %>%
+   summarise(
+    sampleMean = mean(runtimeMinutes, na.rm = TRUE),
+    sampleSD = sd(runtimeMinutes, na.rm = TRUE), 
+    sampleSE = sampleSD/sqrt(100)
+  )
+sampByDecade
+```
+
+5. Compare these estimates to the actual population mean runtimeMinutes for each decade and to the calculated SE in the population mean for samples of size 100 based on the population standard deviation for each decade.
+I did this by merging the data frames `results` and `sampByDecade`. They look close, but a bit off! 
+```{r}
+resultsAdded <- merge(results, sampByDecade, by="decade")
+resultsAdded
+```
+
+6a. Generate a sampling distribution of mean runtimeMinutes for each decade by [a] drawing 1000 samples of 100 movies from each decade and, for each sample, [b] calculating the mean runtimeMinutes and the standard deviation in runtimeMinutes. 
+```{r}
+set.seed(1)
+sampDistByDecade <- 
+  group_by(a, decade) %>%
+  summarise(
+  do(1000) * mean(~runtimeMinutes, data = sample_n(a, size = 100, replace = FALSE)), 
+  do(1000) * sd(~runtimeMinutes, data = sample_n(a, size = 100, replace = FALSE))
+)
+```
+6b. Then, calculate the MEAN and the STANDARD DEVIATION of the sampling distribution of sample means for each decade (the former should be a very good estimate of the population mean, while the latter is another estimate of the standard error in the population mean for a particular sample size)
+```{r}
+sampDistDecadeMeans <- aggregate(mean~decade, mean, data = sampDistByDecade)
+sampDistDecadeSDs <- aggregate(sampDistByDecade$mean, by = list(sampDistByDecade$decade), FUN = sd)
+names(sampDistDecadeSDs)[names(sampDistDecadeSDs) == "Group.1"] <- "decade"
+names(sampDistDecadeSDs)[names(sampDistDecadeSDs) == "x"] <- "sd"
+sampDistsAdded <- merge(sampDistDecadeMeans, sampDistDecadeSDs, by = "decade")
+sampDistsAdded
+```
+* (Calculating standard errors in advance for #7)
+```{r}
+twSE <- (sampDistDecadeMeans[1,2])/sqrt(1000)
+thSE <- (sampDistDecadeMeans[2,2])/sqrt(1000)
+foSE <- (sampDistDecadeMeans[3,2])/sqrt(1000)
+fivSE <- (sampDistDecadeMeans[4,2])/sqrt(1000)
+sixSE <- (sampDistDecadeMeans[5,2])/sqrt(1000)
+sevSE <- (sampDistDecadeMeans[6,2])/sqrt(1000)
+decade <- c("20s", "30s", "40s", "50s", "60s", "70s")
+sampDistSE <- c(twSE, thSE)
+sampDistSEs <- data.frame(decade, sampDistSE)
+```
+
+
+
+6c. and plot a histogram of the sampling distribution. What shape does it have? 
+A: They look normal
+
+Note: I tried to do this several ways, but couldn't get anything fancy to work, so I just brute forced it. 
+```{r, figures-side1, fig.show="hold", out.width="50%"}
+twenties <- sampDistByDecade[sampDistByDecade$decade == "20s", ]
+thirties <- sampDistByDecade[sampDistByDecade$decade == "30s", ]
+forties <- sampDistByDecade[sampDistByDecade$decade == "40s", ]
+fifties <- sampDistByDecade[sampDistByDecade$decade == "50s", ]
+sixties <- sampDistByDecade[sampDistByDecade$decade == "60s", ]
+seventies <- sampDistByDecade[sampDistByDecade$decade == "70s", ]
+histogram(~mean, data = twenties, main = "20s")
+histogram(~mean, data = thirties, main = "30s")
+histogram(~mean, data = forties, main = "40s")
+histogram(~mean, data = fifties, main = "50s")
+histogram(~mean, data = sixties, main = "60s")
+histogram(~mean, data = seventies, main = "70s")
+histogram(~mean, data = sampDistByDecade, main = "All Combined")
+```
+
+7. Finally, compare the standard error in runtimeMinutes for samples of size 100 from each decade [1] as estimated from your first sample of 100 movies, [2] as calculated from the known population standard deviations for each decade, and [3] as estimated from the sampling distribution of sample means.
+```{r}
+CombineSEs <- merge(resultsAdded, sampDistSEs, by = "decade")
+AllStandErrors <- subset(CombineSEs, select = -c(popMean, popSD, sampleMean, sampleSD))
+AllStandErrors
+```
+
+
+
+# Challenge 2
+
+1. What is the probability that she will see 9 or fewer bees arrive during any given session?
+```{r}
+ppois(9, lambda = 12)
+```
+
+2. What is the probability that she will see no bees arrive in a session?
+```{r}
+dpois(0, lambda = 12)
+```
+
+3. What is the probability that she will see exactly 5 bees arrive in a session?
+```{r}
+dpois(5, lambda = 12)
+```
+
+4. What is the probability that she will see more than 18 bees arrive in a session?
+```{r}
+1 - ppois(18, lambda = 12)
+```
+
+5. Plot the relevant Poisson mass function over the values in range 0 ≤ x ≤ 24.
+```{r}
+x <- 0:24
+plot(x, dpois(x, lambda = 12), type = 'h')
+```
+
+6. Using the rpois() function, simulate 1460 results from this distribution (i.e., 4 full years of morning monitoring sessions).
+```{r}
+bee_simulation <- rpois(n = 1460, lambda = 12)
+```
+
+7. Plot the simulated results using the histogram() function from the {mosaic} package and use xlim() to set the horizontal limits to be from 0 to 24. How do your simulated results compare to the shape of the probability mass function you plotted above?
+
+A: They look pretty similar
+```{r}
+histogram(bee_simulation, xlim = c(0,24))
+```
+
+
+# Challenge 3
+Load in the dataset “zombies.csv” from the ada-2021-datasets repository on GitHub as a “tibble,” d. 
+```{r}
+library(readr)
+f <- "https://raw.githubusercontent.com/difiore/ada-2021-datasets/master/zombies.csv"
+d <- read_csv(f, col_names = TRUE)
+```
+
+1. Calculate the *population* mean and standard deviation for each quantitative random variable (height, weight, age, number of zombies killed, and years of education).
+```{r}
+heightMean <- mean(d$height)
+heightSD <- sdpop(d$height)
+weightMean <- mean(d$weight)
+weightSD <- sdpop(d$weight)
+ageMean <- mean(d$age)
+ageSD <- sdpop(d$age)
+zombiesKOMean <- mean(d$zombies_killed)
+zombiesKOSD <- sdpop(d$zombies_killed)
+educationYearsMean <- mean(d$years_of_education)
+educationYearsSD <- mean(d$years_of_education)
+```
+
+2. Use {ggplot} and make boxplots of each of these variables by gender.
+```{r, figures-side2, fig.show="hold", out.width="50%"}
+p1Ht <- boxplot(height~gender, data = d, main = "Height by Gender")
+p1Wt <- boxplot(weight~gender, data = d, main = "Weight by Gender")
+p1Age <- boxplot(age~gender, data = d, main = "Age by Gender") 
+p1Zm <- boxplot(zombies_killed~gender, data = d, main = "# Zombies Killed by Gender")
+p1Ed <- boxplot(years_of_education~gender, data=d, main = "Years of Education By Gender")
+```
+
+3. Use {ggplot2} and make scatterplots of height and weight in relation to age, using different colored points for males versus females. Do these variables seem to be related? In what way?
+
+A: It looks like there's a linear relationship between height and age, and between weight and age
+```{r, figures-side3, fig.show="hold", out.width="50%"}
+p2Ht <- ggplot(data = d, aes(x=age, y=height, color=gender)) + geom_point() + ggtitle("Height")
+p2Ht
+p2Wt <- ggplot(data = d, aes(x=age, y=weight, color=gender)) + geom_point() + ggtitle("Weight")
+p2Wt
+```
+
+4. Using histograms and Q-Q plots, check whether the quantitative variables seem to be drawn from a normal distribution. Which seem to be and which do not?
+
+A: Looks normally distributed: Height, Weight, Age
+Doesn't look normally distributed: Zombies killed, years of education
+```{r, figures-side4, fig.show="hold", out.width="50%"}
+#Histograms
+p3Ht <- ggplot(data=d, aes(x=height)) + geom_histogram(binwidth=.25, colour="black", fill="white")+ ggtitle("Height")
+p3Ht
+p3Wt <- ggplot(data=d, aes(x=weight)) + geom_histogram(binwidth=.25, colour="black", fill="white") + ggtitle("Weight")
+p3Wt
+p3Zm <- ggplot(data=d, aes(x=zombies_killed)) + geom_histogram(binwidth=.25, colour="black", fill="white") + ggtitle("Number of ZombiesKilled")
+p3Zm
+p3Ed <- ggplot(data=d, aes(x=years_of_education)) + geom_histogram(binwidth=.25, colour="black", fill="white") + ggtitle("Years of Education")
+p3Ed
+p3Age <- ggplot(data=d, aes(x=age)) + geom_histogram(binwidth=.25, colour="black", fill="white") + ggtitle("Age")
+p3Age 
+
+#Q-Q Plots
+library(ggpubr)
+p4Ht <- ggqqplot(d$height, title = "Height")
+p4Ht
+p4Wt <- ggqqplot(d$weight, title = "Weight")
+p4Wt
+p4Zm <- ggqqplot(d$zombies_killed, title = "Number of Zombies Killed")
+p4Zm
+p4Ed <- ggqqplot(d$years_of_education, title = "Years of Education")
+p4Ed
+p4Age <- ggqqplot(d$age, title = "Age")
+p4Age
+```
+
+5. Now use the `sample_n()` function from {dplyr} to sample ONE subset of 50 zombie apocalypse survivors (without replacement) from this population and calculate the mean and sample standard deviation for each variable. Also estimate the standard error for each variable based on this sample and use that to construct a 95% confidence interval for each mean. You can use either the standard normal or a Student’s t distribution to derive the critical values needed to calculate the lower and upper limits of the CI.
+
+Note: I'm a bit confused. Wouldn't the lower and upper CIs be close to the mean + 2 SDs of the mean? I read through module 14 and used the code from there for CIs, but I don't get why they're so small here.
+```{r}
+set.seed(1)
+s <- sample_n(d, size = 50, replace = FALSE)
+q <- select(s, height, weight, age, zombies_killed, years_of_education)
+sample50 <- tibble(variable = character(), mean = numeric(), sd = numeric(), se = numeric(), ci_lower = numeric(), ci_upper = numeric())
+for (i in seq_along(q)) {
+  m <- mean(q[[i]])
+  sd <- sd(q[[i]])
+  se <- sd / sqrt(50)
+  ci_L <- m + qnorm(0.05 / 2) * se
+  ci_U <- m - qnorm(0.05 / 2) * se
+  sample50 <- add_row(sample50, variable = (colnames(q)[i]), mean = m, sd = sd, se = se, ci_lower = ci_L, ci_upper = ci_U)
+}
+sample50
+```
+
+6. Then draw another 99 random samples of 50 zombie apocalypse survivors out and calculate the mean for each of the these samples. Together with the first sample you drew out, you now have a set of 100 means for each variable (each based on 50 observations), which constitutes a sampling distribution for each variable. What are the means and standard deviations of the sampling distribution for each variable?
+
+**Note**: I cannot for the life of me add a row with the means from the previous tibble. I am going insane trying it. I have spent well over an hour on it so I'm moving on. I'll keep commented in the idea of what I was going for.
+
+**Note 2**: Because I couldn't add them, I combined the means with the means from the original sampling.
+```{r}
+set.seed(1)
+sample99 <-
+  tibble(
+  sampleTime = c(1:99),
+  heightMeans = do(99) * mean(~height, data = sample_n(d, size = 50, replace = FALSE)),
+  weightMeans = do(99) * mean(~weight, data = sample_n(d, size = 50, replace = FALSE)),
+  ageMeans = do(99) * mean(~age, data = sample_n(d, size = 50, replace = FALSE)),
+  zombieMeans = do(99) * mean(~zombies_killed, data = sample_n(d, size = 50, replace = FALSE)),
+  eduMeans = do(99) * mean(~years_of_education, data = sample_n(d, size = 50, replace = FALSE))
+)
+#This is where I tried
+#sample100 <- add_row(samples99, sampleTime = 100, heightMeans = sample50[[1,2]], weightMeans = sample50[[2,2]], ageMeans = sample50[[3,2]], zombieMeans = sample50[[4,2]], eduMeans = sample50[[5,2]])
+
+#Means
+heightMeanDist <- (mean(~mean, data = sample99$heightMeans) + sample50[[1,2]])/2
+heightMeanDist
+weightMeanDist <- (mean(~mean, data = sample99$weightMeans) + sample50[[2,2]])/2
+weightMeanDist
+ageMeanDist <- (mean(~mean, data = sample99$ageMeans) + sample50[[3,2]])/2
+ageMeanDist
+zombieMeanDist <- (mean(~mean, data = sample99$zombieMeans) + sample50[[4,2]])/2
+zombieMeanDist
+eduMeanDist <- (mean(~mean, data = sample99$eduMeans) + sample50[[5,2]])/2
+eduMeanDist
+```
+6b. Separating SDs for ease of reading
+**Note**: Because I couldn't add them, I combined the means with the means from the original sampling. I couldn't do the same for the standard deviations so those will be slightly off, I'm sorry
+```{r}
+#SDs
+heightMeanSD <- sd(~mean, data = sample99$heightMeans)
+heightMeanSD
+weightMeanSD <- sd(~mean, data = sample99$weightMeans)
+weightMeanSD
+ageMeanSD <- sd(~mean, data = sample99$ageMeans)
+ageMeanSD
+zombieMeanSD <- sd(~mean, data = sample99$zombieMeans)
+zombieMeanSD
+eduMeanSD <- sd(~mean, data = sample99$eduMeans)
+eduMeanSD
+sampDistSDs <- c(heightMeanSD, weightMeanSD, ageMeanSD, zombieMeanSD, eduMeanSD)
+```
+
+7. Finally, construct a 95% confidence interval for each mean directly from the sampling distribution of sample means using the central 95% that distribution (i.e., by setting the lower and upper CI bounds to 2.5% and 97.5% of the way through that distribution).
+```{r}
+ciLowerHeight <- heightMeanDist + qnorm(0.05/2) * heightMeanSD
+ciUpperHeight <- heightMeanDist + qnorm(0.95/2) * heightMeanSD
+ciHeight <- c("Height", ciLowerHeight, ciUpperHeight)
+ciLowerWeight <- weightMeanDist + qnorm(0.05/2) * weightMeanSD
+ciUpperWeight <- weightMeanDist + qnorm(0.95/2) * weightMeanSD
+ciWeight <- c("Weight", ciLowerWeight, ciUpperWeight)
+ciLowerAge <- ageMeanDist + qnorm(0.05/2) * ageMeanSD
+ciUpperAge <- ageMeanDist + qnorm(0.95/2) * ageMeanSD
+ciAge <- c("Age", ciLowerAge, ciUpperAge)
+ciLowerZombie <- zombieMeanDist + qnorm(0.05/2) * zombieMeanSD
+ciUpperZombie <- zombieMeanDist + qnorm(0.95/2) * zombieMeanSD
+ciZombie <- c("Zombies Killed", ciLowerZombie, ciUpperZombie)
+ciLowerEdu <- eduMeanDist + qnorm(0.05/2) * eduMeanSD
+ciUpperEdu <- eduMeanDist + qnorm(0.95/2) * eduMeanSD
+ciEdu <- c("Years of Education", ciLowerEdu, ciUpperEdu)
+
+sampDistCIs <- data_frame(ciHeight, ciWeight, ciAge, ciZombie, ciEdu)
+sampDistCIs <- as.data.frame(t(sampDistCIs))
+names(sampDistCIs)[names(sampDistCIs) == "V1"] <- "Variable"
+names(sampDistCIs)[names(sampDistCIs) == "V2"] <- "ciLower"
+names(sampDistCIs)[names(sampDistCIs) == "V3"] <- "ciUpper"
+sampDistCIs
+```
+8. How do the standard deviations of the sampling distribution for each variable compare to the standard errors estimated from your first sample of size 50? What do sampling distributions for each variable mean look like? Are they normally distributed? What about for those variables that you concluded were not originally drawn from a normal distribution? How do the two 95% CIs you estimated compare to one another (i.e., the CI based on one sample and its estimated standard deviation versus the CI based on simulation)?
+
+8a. How do the standard deviations of the sampling distribution for each variable compare to the standard errors estimated from your first sample of size 50?
+
+A: Very similar!
+```{r}
+samp50SEs <- sample50[ , c(1,4)]
+compareSDs <- add_column(samp50SEs, sampDistSDs)
+compareSDs
+```
+
+8b. What do sampling distributions for each variable mean look like? Are they normally distributed? What about for those variables that you concluded were not originally drawn from a normal distribution?
+
+A: I had said height, weight, and age looked normally distributed before, while # of zombies killed and years of education did not. Now all of them look...*somewhat* normal, but not completely. 
+```{r, figures-side5, fig.show="hold", out.width="50%"}
+histogram(~mean, data = sample99$heightMeans, main = "Sampling Distribution for \nHeight Means")
+histogram(~mean, data = sample99$weightMeans, main = "Sampling Distribution for \nWeight Means")
+histogram(~mean, data = sample99$ageMeans, main = "Sampling Distribution for \nAge Means")
+histogram(~mean, data = sample99$zombieMeans, main = "Sampling Distribution for \n Means of Zombies Killed")
+histogram(~mean, data = sample99$eduMeans, main = "Sampling Distribution for \n Means of Years of Education")
+```
+
+8c. How do the two 95% CIs you estimated compare to one another (i.e., the CI based on one sample and its estimated standard deviation versus the CI based on simulation)?
+A: They look pretty similar, but the CIs from the first sample of just 50 seem to be spread wider than the CIs from the sampling distribution. 
+```{r}
+samp50CIs <- sample50[ , c(5,6)]
+compareCIs <- add_column(sampDistCIs, samp50CIs)
+compareCIs
+```
+
